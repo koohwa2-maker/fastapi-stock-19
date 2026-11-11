@@ -1,0 +1,38 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH 키 설정
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_KEY" > ~/.ssh/ec2.pem
+          chmod 600 ~/.ssh/ec2.pem
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: 코드 업로드
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          tar czf - --exclude=.git --exclude=.venv --exclude=.github . \
+            | ssh -i ~/.ssh/ec2.pem ubuntu@"$EC2_HOST" 'mkdir -p ~/app && tar xzf - -C ~/app'
+
+      - name: 배포 스크립트 실행
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: ssh -i ~/.ssh/ec2.pem ubuntu@"$EC2_HOST" 'bash ~/app/deploy/setup.sh'
